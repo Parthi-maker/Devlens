@@ -236,6 +236,6 @@ MIT © [Parthiban R](https://github.com/yourusername)
 ---
 
 <div align="center">
-  <b>If DevLens helped you, consider giving it a ⭐ on GitHub.</b><br/>
+  <b>If DevLens helped you, consider giving it a star on GitHub.</b><br/>
   <sub>Built with focus and zero dependencies · Deployed on Vercel</sub>
 </div>
