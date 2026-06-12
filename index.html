@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DevLens — See every PR clearly</title>
+<meta name="description" content="Paste any GitHub pull request URL and get an instant visual breakdown of changes, risk score, file diffs, and commit history." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+:root{
+  --bg:#0D0F12;
+  --surface:#161B22;
+  --surface-2:#1B222C;
+  --accent:#6C63FF;
+  --accent-soft:rgba(108,99,255,.18);
+  --accent-glow:rgba(108,99,255,.45);
+  --cyan:#00D4FF;
+  --cyan-soft:rgba(0,212,255,.14);
+  --text:#E8ECF4;
+  --muted:#8B94A7;
+  --faint:#5A6375;
+  --border:rgba(108,99,255,.16);
+  --border-hard:rgba(139,148,167,.18);
+  --green:#3FB950;
+  --red:#F85149;
+  --radius:10px;
+  --font-ui:'Inter',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-ui);
+  -webkit-font-smoothing:antialiased;
+  line-height:1.6;
+  overflow-x:hidden;
+}
+::selection{background:var(--accent);color:#fff}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+.container{max-width:1180px;margin:0 auto;padding:0 24px}
+.mono{font-family:var(--font-mono)}
+
+/* ===== Reveal animations ===== */
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal.d1{transition-delay:.08s}
+.reveal.d2{transition-delay:.16s}
+.reveal.d3{transition-delay:.24s}
+@media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+
+/* ===== Navbar ===== */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  transition:background .3s,border-color .3s,backdrop-filter .3s;
+  border-bottom:1px solid transparent;
+}
+.nav.scrolled{
+  background:rgba(13,15,18,.78);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border-bottom-color:var(--border-hard);
+}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-weight:700;font-size:17px;letter-spacing:-.02em}
+.logo .glyph{color:var(--accent)}
+.logo .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px 2px var(--accent-glow)}
+.nav-links{display:flex;align-items:center;gap:34px;font-size:14px;font-weight:500;color:var(--muted)}
+.nav-links a{transition:color .2s}
+.nav-links a:hover{color:var(--text)}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--font-ui);font-weight:600;font-size:14px;
+  padding:10px 22px;border-radius:999px;border:1px solid transparent;
+  cursor:pointer;transition:all .2s;white-space:nowrap;
+}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 0 22px -4px var(--accent-glow)}
+.btn-primary:hover{background:#7d75ff;box-shadow:0 0 30px -2px var(--accent-glow);transform:translateY(-1px)}
+.btn-outline{background:transparent;color:var(--text);border-color:var(--border-hard)}
+.btn-outline:hover{border-color:var(--accent);color:#fff;background:var(--accent-soft)}
+.btn-lg{padding:13px 28px;font-size:15px;border-radius:999px}
+.hamburger{display:none;background:none;border:0;color:var(--text);cursor:pointer;padding:6px}
+.mobile-menu{
+  display:none;flex-direction:column;gap:4px;
+  background:rgba(13,15,18,.96);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border-hard);padding:12px 24px 20px;
+}
+.mobile-menu a{padding:10px 4px;font-size:15px;font-weight:500;color:var(--muted);border-bottom:1px solid rgba(139,148,167,.08)}
+.mobile-menu a:last-of-type{border-bottom:0}
+.mobile-menu .btn{margin-top:10px;justify-content:center}
+.mobile-menu.open{display:flex}
+
+/* ===== Hero ===== */
+.hero{
+  position:relative;
+  padding:172px 0 110px;
+  overflow:hidden;
+}
+.hero-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.hero::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 55% at 50% 0%,rgba(108,99,255,.12),transparent 70%),
+             linear-gradient(to bottom,transparent 55%,var(--bg) 100%);
+}
+.hero-grid{position:relative;z-index:1;display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--font-mono);font-size:12.5px;color:var(--cyan);
+  background:var(--cyan-soft);border:1px solid rgba(0,212,255,.25);
+  padding:5px 14px;border-radius:999px;margin-bottom:22px;
+}
+.hero h1{font-size:clamp(38px,5vw,58px);font-weight:800;line-height:1.08;letter-spacing:-.03em}
+.hero h1 .hl{color:var(--accent);text-shadow:0 0 32px var(--accent-glow)}
+.hero p.sub{margin:22px 0 34px;font-size:17px;color:var(--muted);max-width:480px}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap}
+.hero-meta{margin-top:34px;display:flex;gap:24px;font-family:var(--font-mono);font-size:12.5px;color:var(--faint)}
+.hero-meta span b{color:var(--muted);font-weight:500}
+
+/* ===== Dashboard mockup ===== */
+.mockup{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.7),0 0 50px -18px var(--accent-glow);
+  overflow:hidden;
+  font-family:var(--font-mono);
+  font-size:11.5px;
+}
+.mock-titlebar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--border-hard);background:var(--surface-2)}
+.mock-titlebar .tdot{width:10px;height:10px;border-radius:50%}
+.mock-titlebar .t1{background:#FF5F57}.mock-titlebar .t2{background:#FEBC2E}.mock-titlebar .t3{background:#28C840}
+.mock-titlebar .url{margin-left:10px;color:var(--faint);font-size:11px;background:var(--bg);border:1px solid var(--border-hard);border-radius:6px;padding:3px 10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mock-stats{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--border-hard);color:var(--muted);flex-wrap:wrap}
+.mock-stats .add{color:var(--green)}.mock-stats .del{color:var(--red)}
+.mock-stats .sep{color:var(--faint)}
+.mock-body{display:grid;grid-template-columns:1.5fr 1fr}
+.diff{padding:10px 0;border-right:1px solid var(--border-hard);overflow:hidden}
+.diff-file{display:flex;align-items:center;gap:7px;padding:4px 14px 8px;color:var(--cyan);font-size:11px}
+.dline{display:flex;white-space:pre;line-height:1.75}
+.dline .ln{width:34px;text-align:right;padding-right:10px;color:var(--faint);user-select:none;flex-shrink:0}
+.dline .code{padding-left:10px;color:#ADB6C5}
+.dline .sign{display:inline-block;width:13px;color:var(--faint)}
+.dline.add{background:rgba(63,185,80,.09);box-shadow:inset 2px 0 0 rgba(63,185,80,.55)}
+.dline.add .ln{color:rgba(63,185,80,.55)}
+.dline.add .sign{color:var(--green)}
+.dline.del{background:rgba(248,81,73,.09);box-shadow:inset 2px 0 0 rgba(248,81,73,.5)}
+.dline.del .ln{color:rgba(248,81,73,.5)}
+.dline.del .sign{color:var(--red)}
+.dline.del .code{opacity:.7}
+.dline.ctx .code{color:#8B94A7}
+/* Syntax highlighting tokens */
+.tk-kw{color:#C792EA}
+.tk-fn{color:#82AAFF}
+.tk-str{color:#C3E88D}
+.tk-num{color:#F78C6C}
+.tk-type{color:#FFCB6B}
+.tk-prop{color:#00D4FF}
+.tk-com{color:#5F6B7F;font-style:italic}
+.mock-side{padding:14px;display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--bg);border:1px solid var(--border-hard);border-radius:8px;padding:12px}
+.panel h5{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:10px}
+.gauge-wrap{display:flex;align-items:center;gap:14px}
+.gauge{width:84px;height:46px;position:relative}
+.gauge svg{display:block}
+.gauge-label .score{font-size:20px;font-weight:700;color:var(--text)}
+.gauge-label .tag{font-size:10.5px;color:#FEBC2E}
+.donut-wrap{display:flex;align-items:center;gap:14px}
+.donut{
+  width:62px;height:62px;border-radius:50%;flex-shrink:0;
+  background:conic-gradient(var(--accent) 0 52%,var(--cyan) 52% 78%,#3FB950 78% 92%,#5A6375 92% 100%);
+  position:relative;
+}
+.donut::after{content:"";position:absolute;inset:11px;background:var(--bg);border-radius:50%}
+.legend{display:flex;flex-direction:column;gap:4px;font-size:10.5px;color:var(--muted)}
+.legend li{display:flex;align-items:center;gap:7px}
+.legend .sw{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* ===== Sections shared ===== */
+section{padding:104px 0}
+.section-head{max-width:620px;margin-bottom:58px}
+.section-head .kicker{font-family:var(--font-mono);font-size:13px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;display:block}
+.section-head h2{font-size:clamp(28px,3.4vw,40px);font-weight:800;letter-spacing:-.02em;line-height:1.15}
+.section-head p{margin-top:14px;color:var(--muted);font-size:16px}
+
+/* ===== How it works ===== */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;position:relative}
+.steps::before{
+  content:"";position:absolute;top:34px;left:12%;right:12%;
+  border-top:1.5px dashed rgba(108,99,255,.35);z-index:0;
+}
+.step{position:relative;z-index:1;text-align:left}
+.step-num{
+  width:68px;height:68px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:22px;color:var(--accent);
+  box-shadow:0 0 24px -8px var(--accent-glow);
+}
+.step-num svg{width:26px;height:26px}
+.step .n{font-family:var(--font-mono);font-size:12px;color:var(--cyan);display:block;margin-bottom:6px}
+.step h3{font-size:18px;font-weight:700;margin-bottom:8px}
+.step p{font-size:14.5px;color:var(--muted)}
+
+/* ===== Features ===== */
+#features{background:linear-gradient(to bottom,var(--bg),#0F1218 50%,var(--bg))}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:28px 26px;transition:transform .25s,border-color .25s,box-shadow .25s;
+}
+.card:hover{transform:translateY(-4px);border-color:rgba(108,99,255,.45);box-shadow:0 18px 44px -18px rgba(0,0,0,.6),0 0 30px -12px var(--accent-glow)}
+.card .icon{
+  width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent);margin-bottom:18px;
+}
+.card .icon svg{width:21px;height:21px}
+.card:nth-child(even) .icon{background:var(--cyan-soft);color:var(--cyan)}
+.card h3{font-size:16.5px;font-weight:700;margin-bottom:8px}
+.card p{font-size:14px;color:var(--muted)}
+.card .kbd{font-family:var(--font-mono);font-size:12px;background:var(--bg);border:1px solid var(--border-hard);border-radius:5px;padding:1px 7px;color:var(--cyan)}
+
+/* ===== Live demo ===== */
+#demo .demo-box{max-width:760px;margin:0 auto;text-align:center}
+.demo-input{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:8px 8px 8px 18px;margin:0 auto 22px;
+  transition:border-color .2s,box-shadow .2s;
+}
+.demo-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.demo-input svg{color:var(--faint);flex-shrink:0;width:18px;height:18px}
+.demo-input input{
+  flex:1;background:none;border:0;outline:0;color:var(--text);
+  font-family:var(--font-mono);font-size:14px;min-width:0;
+}
+.demo-input input::placeholder{color:var(--faint)}
+.chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:46px}
+.chip{
+  font-family:var(--font-mono);font-size:12.5px;color:var(--muted);
+  background:var(--surface);border:1px solid var(--border-hard);border-radius:999px;
+  padding:7px 16px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:7px;
+}
+.chip:hover{color:var(--cyan);border-color:rgba(0,212,255,.4);background:var(--cyan-soft)}
+.chip svg{width:13px;height:13px}
+.demo-preview{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+.demo-preview .mockup{filter:blur(3px) brightness(.55);border:0;border-radius:0;box-shadow:none;pointer-events:none}
+.demo-overlay{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  background:rgba(13,15,18,.35);
+}
+.demo-overlay span{font-size:13px;color:var(--muted)}
+
+/* ===== Trusted tech ===== */
+.tech{padding:70px 0;border-top:1px solid var(--border-hard);border-bottom:1px solid var(--border-hard)}
+.tech h4{text-align:center;font-size:13px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:30px}
+.tech-pills{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.tech-pill{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--font-mono);font-size:13.5px;color:var(--muted);
+  background:var(--surface);border:1px solid var(--border-hard);border-radius:999px;
+  padding:9px 20px;transition:all .2s;
+}
+.tech-pill:hover{color:var(--text);border-color:var(--accent)}
+.tech-pill svg{width:15px;height:15px;color:var(--accent)}
+
+/* ===== Footer (premium dark) ===== */
+footer{
+  position:relative;
+  background:#050816;
+  border-top:1px solid rgba(99,102,241,.14);
+  padding:88px 0 0;
+  overflow:hidden;
+}
+footer::before{
+  content:"";position:absolute;top:-130px;left:50%;transform:translateX(-50%);
+  width:700px;height:260px;pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(99,102,241,.15),transparent 70%);
+  filter:blur(12px);
+}
+.foot-grid{position:relative;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:64px;padding-bottom:72px}
+.foot-brand .logo{font-size:18px}
+.foot-brand .logo .glyph{color:#6366F1}
+.foot-brand .logo .dot{background:#6366F1;box-shadow:0 0 12px 3px rgba(99,102,241,.55)}
+.foot-desc{margin-top:18px;font-size:14.5px;line-height:1.7;color:var(--muted);max-width:320px}
+.foot-byline{margin-top:14px;font-size:12.5px;color:var(--faint);letter-spacing:.01em}
+.foot-socials{display:flex;gap:12px;margin-top:28px}
+.foot-socials a{
+  display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:11px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  color:var(--muted);transition:all .25s cubic-bezier(.16,1,.3,1);
+}
+.foot-socials a:hover{
+  color:#fff;border-color:rgba(99,102,241,.55);background:rgba(99,102,241,.12);
+  transform:translateY(-3px);box-shadow:0 8px 22px -8px rgba(99,102,241,.5);
+}
+.foot-socials a svg{width:16px;height:16px}
+.foot-col h5{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--faint);margin-bottom:22px}
+.foot-col li{margin-bottom:14px}
+.foot-col a{
+  position:relative;display:inline-flex;align-items:center;gap:9px;
+  font-size:14px;color:var(--muted);transition:color .25s,transform .25s;
+}
+.foot-col a:hover{color:#fff;transform:translateX(3px)}
+.foot-col a::after{content:"";position:absolute;left:0;bottom:-3px;width:0;height:1px;background:#6366F1;opacity:.7;transition:width .25s ease}
+.foot-col a:hover::after{width:100%}
+.foot-col a svg{width:15px;height:15px;color:var(--faint);transition:color .25s}
+.foot-col a:hover svg{color:#6366F1}
+.foot-bottom{
+  position:relative;border-top:1px solid rgba(255,255,255,.07);padding:26px 0;
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;
+  font-size:12.5px;color:var(--faint);
+}
+.foot-bottom .tagline{text-align:center;color:var(--muted);letter-spacing:.01em}
+.foot-bottom .ver{
+  justify-self:end;font-family:var(--font-mono);font-size:11.5px;color:var(--faint);
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:3px 12px;
+}
+@media (max-width:860px){
+  footer{padding:64px 0 0}
+  .foot-grid{grid-template-columns:1fr;gap:44px;padding-bottom:52px}
+  .foot-bottom{grid-template-columns:1fr;text-align:center;gap:10px;padding:22px 0}
+  .foot-bottom .tagline{order:-1}
+  .foot-bottom .ver{justify-self:center}
+}
+
+/* ===== Demo extras: settings + errors ===== */
+.demo-input{position:relative}
+.settings-btn{position:relative;background:none;border:1px solid var(--border-hard);border-radius:8px;color:var(--muted);width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0}
+.settings-btn:hover{color:var(--text);border-color:var(--accent)}
+.settings-btn svg{width:17px;height:17px}
+.settings-btn .tok-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--surface);display:none}
+.settings-btn.has-token .tok-dot{display:block}
+.settings-pop{position:absolute;top:calc(100% + 10px);right:0;width:310px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:left;z-index:60;display:none;box-shadow:0 20px 50px -12px rgba(0,0,0,.7)}
+.settings-pop.open{display:block}
+.settings-pop label{font-size:12.5px;font-weight:600;color:var(--text);display:block;margin-bottom:6px}
+.settings-pop p{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5}
+.settings-pop input{width:100%;background:var(--bg);border:1px solid var(--border-hard);border-radius:8px;padding:9px 12px;color:var(--text);font-family:var(--font-mono);font-size:12px;outline:none;margin-bottom:12px}
+.settings-pop input:focus{border-color:var(--accent)}
+.demo-error{display:none;align-items:center;gap:8px;justify-content:center;font-size:13.5px;color:var(--red);margin:-6px 0 18px}
+.demo-error.show{display:flex}
+.demo-error svg{width:15px;height:15px;flex-shrink:0}
+
+/* ===== Skeleton loading ===== */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skel{border-radius:6px;background:linear-gradient(90deg,#1B222C 25%,#22293A 50%,#1B222C 75%);background-size:800px 100%;animation:shimmer 1.4s linear infinite}
+.skel-card{background:var(--surface);border:1px solid var(--border-hard);border-radius:12px;padding:22px}
+.skel-row{height:14px;margin-bottom:12px}
+
+/* ===== Results ===== */
+#results{display:none;padding:0 0 104px;scroll-margin-top:80px}
+#results.active{display:block}
+.results-wrap{display:flex;flex-direction:column;gap:20px}
+.kbd{font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--border-hard);border-radius:5px;padding:1px 7px;color:var(--cyan)}
+.pr-header{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px 26px}
+.pr-title{font-size:21px;font-weight:700;letter-spacing:-.01em;line-height:1.35;flex:1;min-width:0}
+.pr-title .num{color:var(--faint);font-weight:500}
+.pr-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--muted)}
+.pr-meta img{width:22px;height:22px;border-radius:50%;display:block}
+.pr-meta .author{display:inline-flex;align-items:center;gap:8px}
+.badge{font-family:var(--font-mono);font-size:11.5px;font-weight:500;padding:3px 12px;border-radius:999px;text-transform:capitalize}
+.badge.open{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.35)}
+.badge.closed{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.35)}
+.badge.merged{background:var(--accent-soft);color:#A8A2FF;border:1px solid rgba(108,99,255,.4)}
+.branch-chip{font-family:var(--font-mono);font-size:11.5px;background:var(--bg);border:1px solid var(--border-hard);border-radius:6px;padding:2px 9px;color:var(--cyan)}
+.pr-statsbar{display:flex;gap:16px;margin-top:14px;font-family:var(--font-mono);font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+.pr-statsbar .add{color:var(--green)}
+.pr-statsbar .del{color:var(--red)}
+.results-main{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start}
+.file-tree{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:sticky;top:84px;max-height:72vh;overflow-y:auto}
+.ft-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;color:var(--muted);font-family:var(--font-mono);font-size:11.5px;padding:6px 8px;border-radius:6px;cursor:pointer;text-align:left;transition:background .15s,color .15s}
+.ft-item:hover{background:var(--accent-soft);color:var(--text)}
+.ft-item .fdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ft-item .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ft-item .fstat{font-size:10px;color:var(--faint);flex-shrink:0;white-space:nowrap}
+.diff-col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.diff-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.diff-toolbar .count{font-family:var(--font-mono);font-size:12.5px;color:var(--muted)}
+.btn-ghost{background:none;border:1px solid var(--border-hard);color:var(--muted);font-size:12.5px;font-weight:500;padding:6px 14px;border-radius:8px;cursor:pointer;transition:all .2s;font-family:var(--font-ui)}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.dfile{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;scroll-margin-top:90px;transition:border-color .2s,box-shadow .2s}
+.dfile.focused{border-color:rgba(108,99,255,.55);box-shadow:0 0 0 3px var(--accent-soft)}
+.dfile-head{display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;background:var(--surface-2);border-bottom:1px solid transparent;font-family:var(--font-mono);font-size:12px;color:var(--text);user-select:none}
+.dfile.open .dfile-head{border-bottom-color:var(--border-hard)}
+.dfile-head .chev{transition:transform .2s;color:var(--faint);flex-shrink:0;width:15px;height:15px}
+.dfile.open .dfile-head .chev{transform:rotate(90deg)}
+.dfile-head .path{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fbadge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:5px;flex-shrink:0;font-family:var(--font-mono)}
+.fbadge.added{background:rgba(63,185,80,.15);color:var(--green)}
+.fbadge.modified,.fbadge.changed{background:rgba(254,188,46,.13);color:#FEBC2E}
+.fbadge.removed{background:rgba(248,81,73,.15);color:var(--red)}
+.fbadge.renamed,.fbadge.copied{background:var(--cyan-soft);color:var(--cyan)}
+.fbadge.binary{background:rgba(139,148,167,.15);color:var(--muted)}
+.dfile-head .fchanges{font-size:11px;flex-shrink:0;color:var(--faint)}
+.dfile-head .fchanges .add{color:var(--green)}
+.dfile-head .fchanges .del{color:var(--red)}
+.dfile-body{display:none;font-family:var(--font-mono);font-size:11.5px;overflow-x:auto;padding:8px 0}
+.dfile.open .dfile-body{display:block}
+.dfile-body .dline .ln{width:42px}
+.dline.hunk{background:rgba(0,212,255,.05)}
+.dline.hunk .code{color:var(--faint)}
+.dline-note{padding:10px 16px;color:var(--faint);font-size:11.5px;font-style:italic}
+.results-bottom{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:start}
+.rpanel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px}
+.rpanel h4{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:16px}
+.risk-big{display:flex;align-items:center;gap:18px}
+.risk-big .score{font-size:34px;font-weight:800;line-height:1}
+.risk-big .tag{font-size:13px;font-weight:600;margin-top:4px}
+.risk-factors{margin-top:16px;display:flex;flex-direction:column;gap:6px}
+.risk-factors li{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.donut-lg{width:110px;height:110px;border-radius:50%;position:relative;flex-shrink:0}
+.donut-lg::after{content:"";position:absolute;inset:20px;background:var(--surface);border-radius:50%}
+.commit-list{display:flex;flex-direction:column;max-height:340px;overflow-y:auto}
+.commit{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid rgba(139,148,167,.1);align-items:flex-start}
+.commit:last-child{border-bottom:0}
+.commit img,.commit .avfall{width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px}
+.commit .avfall{background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.commit .msg{font-size:12.5px;color:var(--text);line-height:1.4;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.commit .cmeta{font-size:11px;color:var(--faint);font-family:var(--font-mono)}
+.commit .cmeta a{color:var(--cyan)}
+.commit .cmeta a:hover{text-decoration:underline}
+.shortcut-bar{display:none;justify-content:center;gap:26px;margin-top:26px;font-size:12px;color:var(--faint);flex-wrap:wrap}
+#results.active .shortcut-bar{display:flex}
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface-2);border:1px solid var(--accent);color:var(--text);font-size:13px;font-weight:500;padding:10px 22px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;z-index:200}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:980px){
+  .results-main{grid-template-columns:1fr}
+  .file-tree{position:static;max-height:240px}
+  .results-bottom{grid-template-columns:1fr}
+}
+
+/* ===== Responsive ===== */
+@media (max-width:980px){
+  .hero-grid{grid-template-columns:1fr;gap:48px}
+  .hero{padding:140px 0 80px}
+  .cards{grid-template-columns:repeat(2,1fr)}
+  .steps{grid-template-columns:1fr;gap:42px}
+  .steps::before{display:none}
+}
+@media (max-width:680px){
+  .nav-links{display:none}
+  .hamburger{display:block}
+  .cards{grid-template-columns:1fr}
+  section{padding:72px 0}
+  .mock-body{grid-template-columns:1fr}
+  .diff{border-right:0;border-bottom:1px solid var(--border-hard)}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAVBAR ============ -->
+<nav class="nav" id="nav">
+  <div class="container nav-inner">
+    <a href="#" class="logo"><span class="glyph">&lt;/&gt;</span> DevLens <span class="dot"></span></a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How it Works</a></li>
+      <li><a href="#demo">Examples</a></li>
+      <li><a href="https://github.com" target="_blank" rel="noopener">GitHub</a></li>
+      <li><a href="#demo" class="btn btn-primary">Try DevLens</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <i data-lucide="menu"></i>
+    </button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#features">Features</a>
+    <a href="#how">How it Works</a>
+    <a href="#demo">Examples</a>
+    <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+    <a href="#demo" class="btn btn-primary">Try DevLens</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="hero">
+  <canvas class="hero-canvas" id="heroCanvas" aria-hidden="true"></canvas>
+  <div class="container hero-grid">
+    <div class="reveal">
+      <span class="eyebrow"><i data-lucide="git-pull-request" style="width:14px;height:14px"></i> Open source PR visualizer</span>
+      <h1>See every PR <span class="hl">clearly</span>.<br/>Ship with confidence.</h1>
+      <p class="sub">Paste any GitHub pull request URL and get an instant visual breakdown of changes, risk score, file diffs, and commit history.</p>
+      <div class="hero-ctas">
+        <a href="#demo" class="btn btn-primary btn-lg">Analyse a PR <i data-lucide="arrow-right" style="width:16px;height:16px"></i></a>
+        <a href="https://github.com" target="_blank" rel="noopener" class="btn btn-outline btn-lg"><i data-lucide="github" style="width:16px;height:16px"></i> View on GitHub</a>
+      </div>
+      <div class="hero-meta">
+        <span><b>0ms</b> setup</span>
+        <span><b>100%</b> client-side</span>
+        <span><b>MIT</b> licensed</span>
+      </div>
+    </div>
+
+    <!-- Dashboard mockup (real HTML/CSS) -->
+    <div class="mockup reveal d2" aria-hidden="true">
+      <div class="mock-titlebar">
+        <span class="tdot t1"></span><span class="tdot t2"></span><span class="tdot t3"></span>
+        <span class="url">devlens.app/pr/facebook/react/28768</span>
+      </div>
+      <div class="mock-stats">
+        <span><i data-lucide="file-diff" style="width:12px;height:12px;vertical-align:-2px"></i> 12 files</span>
+        <span class="sep">·</span>
+        <span class="add">+847</span>
+        <span class="del">-203</span>
+        <span class="sep">·</span>
+        <span>6 commits</span>
+      </div>
+      <div class="mock-body">
+        <div class="diff">
+          <div class="diff-file"><i data-lucide="file-code" style="width:12px;height:12px"></i> src/hooks/usePRAnalysis.ts</div>
+          <div class="dline ctx"><span class="ln">40</span><span class="code"><span class="sign"></span><span class="tk-kw">import</span> { <span class="tk-fn">useSWR</span> } <span class="tk-kw">from</span> <span class="tk-str">'swr'</span>;</span></div>
+          <div class="dline ctx"><span class="ln">41</span><span class="code"><span class="sign"></span><span class="tk-kw">export function</span> <span class="tk-fn">usePRAnalysis</span>(url: <span class="tk-type">string</span>) {</span></div>
+          <div class="dline del"><span class="ln">42</span><span class="code"><span class="sign">-</span>  <span class="tk-kw">const</span> data = <span class="tk-fn">fetchSync</span>(url);</span></div>
+          <div class="dline add"><span class="ln">42</span><span class="code"><span class="sign">+</span>  <span class="tk-kw">const</span> { data, error } = <span class="tk-fn">useSWR</span>(url, fetcher);</span></div>
+          <div class="dline add"><span class="ln">43</span><span class="code"><span class="sign">+</span>  <span class="tk-kw">const</span> risk = <span class="tk-fn">useMemo</span>(() <span class="tk-kw">=&gt;</span> <span class="tk-fn">scoreRisk</span>(data), [data]);</span></div>
+          <div class="dline add"><span class="ln">44</span><span class="code"><span class="sign">+</span>  <span class="tk-com">// Weight churn against touched hot paths</span></span></div>
+          <div class="dline add"><span class="ln">45</span><span class="code"><span class="sign">+</span>  <span class="tk-kw">const</span> level = risk <span class="tk-kw">&gt;</span> <span class="tk-num">70</span> ? <span class="tk-str">'high'</span> : <span class="tk-str">'medium'</span>;</span></div>
+          <div class="dline ctx"><span class="ln">46</span><span class="code"><span class="sign"></span>  <span class="tk-kw">if</span> (error) <span class="tk-kw">return</span> { <span class="tk-prop">status</span>: <span class="tk-str">'failed'</span> };</span></div>
+          <div class="dline del"><span class="ln">47</span><span class="code"><span class="sign">-</span>  <span class="tk-kw">return</span> { <span class="tk-prop">status</span>: <span class="tk-str">'ok'</span>, data };</span></div>
+          <div class="dline add"><span class="ln">47</span><span class="code"><span class="sign">+</span>  <span class="tk-kw">return</span> { <span class="tk-prop">status</span>: <span class="tk-str">'ok'</span>, data, risk, level };</span></div>
+          <div class="dline ctx"><span class="ln">48</span><span class="code"><span class="sign"></span>}</span></div>
+        </div>
+        <div class="mock-side">
+          <div class="panel">
+            <h5>Risk Score</h5>
+            <div class="gauge-wrap">
+              <div class="gauge">
+                <svg viewBox="0 0 100 54" width="84" height="46">
+                  <path d="M8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#22293580" stroke-width="9" stroke-linecap="round"/>
+                  <path d="M8 50 A 42 42 0 0 1 92 50" fill="none" stroke="#FEBC2E" stroke-width="9" stroke-linecap="round" stroke-dasharray="84.5 132"/>
+                </svg>
+              </div>
+              <div class="gauge-label">
+                <div class="score">64</div>
+                <div class="tag">Medium</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <h5>Languages</h5>
+            <div class="donut-wrap">
+              <div class="donut"></div>
+              <ul class="legend">
+                <li><span class="sw" style="background:var(--accent)"></span> TypeScript 52%</li>
+                <li><span class="sw" style="background:var(--cyan)"></span> CSS 26%</li>
+                <li><span class="sw" style="background:#3FB950"></span> JSON 14%</li>
+                <li><span class="sw" style="background:#5A6375"></span> Other 8%</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ HOW IT WORKS ============ -->
+<section id="how">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="kicker">How it works</span>
+      <h2>From URL to insight in seconds</h2>
+      <p>No sign-up, no install, no config. DevLens runs entirely in your browser against the public GitHub API.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-num"><i data-lucide="clipboard-paste"></i></div>
+        <span class="n">01</span>
+        <h3>Paste a PR URL</h3>
+        <p>Drop in any public GitHub pull request link. DevLens validates and parses it instantly.</p>
+      </div>
+      <div class="step reveal d1">
+        <div class="step-num"><i data-lucide="git-branch"></i></div>
+        <span class="n">02</span>
+        <h3>Fetch &amp; parse the diff</h3>
+        <p>DevLens pulls files, commits, and patch data through the GitHub API and parses every hunk.</p>
+      </div>
+      <div class="step reveal d2">
+        <div class="step-num"><i data-lucide="chart-pie"></i></div>
+        <span class="n">03</span>
+        <h3>Get the full picture</h3>
+        <p>Visual stats, an algorithmic risk score, and a navigable line-by-line diff breakdown.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="kicker">Features</span>
+      <h2>Everything a reviewer actually needs</h2>
+      <p>Purpose-built for code review. Nothing more, nothing less.</p>
+    </div>
+    <div class="cards">
+      <div class="card reveal">
+        <div class="icon"><i data-lucide="file-diff"></i></div>
+        <h3>Diff Viewer</h3>
+        <p>Color-coded line-by-line changes with a collapsible file tree. Jump to any hunk in one click.</p>
+      </div>
+      <div class="card reveal d1">
+        <div class="icon"><i data-lucide="gauge"></i></div>
+        <h3>Risk Score</h3>
+        <p>An algorithmic complexity rating from 0 to 100, weighing churn, file spread, and hot paths.</p>
+      </div>
+      <div class="card reveal d2">
+        <div class="icon"><i data-lucide="git-commit-horizontal"></i></div>
+        <h3>Commit Timeline</h3>
+        <p>A visual history of every commit in the PR, so you can follow the author's train of thought.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><i data-lucide="chart-pie"></i></div>
+        <h3>Language Breakdown</h3>
+        <p>A donut chart of file types changed. Spot config-heavy or test-light PRs at a glance.</p>
+      </div>
+      <div class="card reveal d1">
+        <div class="icon"><i data-lucide="keyboard"></i></div>
+        <h3>Keyboard Shortcuts</h3>
+        <p>Press <span class="kbd">⌘K</span> to search, <span class="kbd">J</span>/<span class="kbd">K</span> to navigate files. Review without touching the mouse.</p>
+      </div>
+      <div class="card reveal d2">
+        <div class="icon"><i data-lucide="moon"></i></div>
+        <h3>Dark Mode</h3>
+        <p>Built-in and on by default. Your preference is saved automatically across sessions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LIVE DEMO ============ -->
+<section id="demo">
+  <div class="container">
+    <div class="demo-box">
+      <div class="section-head reveal" style="margin:0 auto 38px;text-align:center">
+        <span class="kicker">Live demo</span>
+        <h2>Try it right now</h2>
+      </div>
+      <div class="demo-input reveal">
+        <i data-lucide="link"></i>
+        <input id="prInput" type="url" placeholder="Paste a GitHub PR URL..." spellcheck="false" />
+        <button class="btn btn-primary" id="analyseBtn">Analyse</button>
+        <button class="settings-btn" id="settingsBtn" type="button" aria-label="Settings"><i data-lucide="settings"></i><span class="tok-dot"></span></button>
+        <div class="settings-pop" id="settingsPop">
+          <label for="tokenInput">GitHub Personal Access Token</label>
+          <p>Add a free GitHub token to avoid rate limits (60 req/hour anonymous, 5,000 with a token). Stored only in your browser.</p>
+          <input id="tokenInput" type="password" placeholder="ghp_..." spellcheck="false" autocomplete="off" />
+          <button class="btn btn-primary" id="saveTokenBtn" type="button" style="width:100%;justify-content:center">Save token</button>
+        </div>
+      </div>
+      <div class="demo-error" id="demoError" role="alert"><i data-lucide="alert-circle"></i><span id="demoErrorText"></span></div>
+      <div class="chips reveal d1">
+        <button class="chip" data-url="https://github.com/facebook/react/pull/28768"><i data-lucide="git-pull-request"></i> facebook/react #28768</button>
+        <button class="chip" data-url="https://github.com/vercel/next.js/pull/62001"><i data-lucide="git-pull-request"></i> vercel/next.js #62001</button>
+        <button class="chip" data-url="https://github.com/tailwindlabs/tailwindcss/pull/13500"><i data-lucide="git-pull-request"></i> tailwindlabs/tailwindcss #13500</button>
+      </div>
+      <div class="demo-preview reveal d2">
+        <div class="mockup">
+          <div class="mock-titlebar">
+            <span class="tdot t1"></span><span class="tdot t2"></span><span class="tdot t3"></span>
+            <span class="url">devlens.app/pr/vercel/next.js/62001</span>
+          </div>
+          <div class="mock-stats">
+            <span>27 files</span><span class="sep">·</span>
+            <span class="add">+1,204</span><span class="del">-589</span>
+            <span class="sep">·</span><span>11 commits</span>
+          </div>
+          <div class="diff" style="border-right:0">
+            <div class="diff-file"><i data-lucide="file-code" style="width:12px;height:12px"></i> packages/next/src/server/render.tsx</div>
+            <div class="dline ctx"><span class="ln">88</span><span class="code"><span class="sign"></span><span class="tk-kw">async function</span> <span class="tk-fn">renderToStream</span>(ctx: <span class="tk-type">RenderContext</span>) {</span></div>
+            <div class="dline del"><span class="ln">89</span><span class="code"><span class="sign">-</span>  <span class="tk-kw">const</span> html = <span class="tk-fn">renderToString</span>(ctx.<span class="tk-prop">tree</span>);</span></div>
+            <div class="dline add"><span class="ln">89</span><span class="code"><span class="sign">+</span>  <span class="tk-kw">const</span> stream = <span class="tk-kw">await</span> <span class="tk-fn">renderToReadableStream</span>(ctx.<span class="tk-prop">tree</span>);</span></div>
+            <div class="dline add"><span class="ln">90</span><span class="code"><span class="sign">+</span>  <span class="tk-kw">await</span> stream.<span class="tk-prop">allReady</span>;</span></div>
+            <div class="dline ctx"><span class="ln">91</span><span class="code"><span class="sign"></span>  <span class="tk-kw">return</span> <span class="tk-fn">finalize</span>(ctx, stream);</span></div>
+          </div>
+        </div>
+        <div class="demo-overlay">
+          <button class="btn btn-primary btn-lg" id="loadExample"><i data-lucide="play" style="width:16px;height:16px"></i> Load Example</button>
+          <span>Pick an example PR above or paste your own</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section id="results" aria-live="polite">
+  <div class="container">
+    <div id="resultsContent" class="results-wrap"></div>
+    <div class="shortcut-bar">
+      <span><span class="kbd">⌘K</span> focus input</span>
+      <span><span class="kbd">J</span> next file</span>
+      <span><span class="kbd">K</span> previous file</span>
+      <span><span class="kbd">Esc</span> collapse all</span>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<!-- ============ TRUSTED TECH ============ -->
+<div class="tech">
+  <div class="container reveal">
+    <h4>Built with tools you already know</h4>
+    <div class="tech-pills">
+      <span class="tech-pill"><i data-lucide="atom"></i> React</span>
+      <span class="tech-pill"><i data-lucide="zap"></i> Vite</span>
+      <span class="tech-pill"><i data-lucide="github"></i> GitHub API</span>
+      <span class="tech-pill"><i data-lucide="chart-bar"></i> Recharts</span>
+      <span class="tech-pill"><i data-lucide="sparkles"></i> Framer Motion</span>
+      <span class="tech-pill"><i data-lucide="triangle"></i> Vercel</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="container">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a href="#" class="logo"><span class="glyph">&lt;/&gt;</span> DevLens <span class="dot"></span></a>
+        <p class="foot-desc">Transforming pull requests into clear visual insights for faster, smarter code reviews.</p>
+        <p class="foot-byline">Built by Parthiban R</p>
+        <div class="foot-socials">
+          <a href="https://github.com/Parthi-maker?tab=repositories" target="_blank" rel="noopener" aria-label="GitHub"><i data-lucide="github"></i></a>
+          <a href="https://www.linkedin.com/in/parthiban-r-/" target="_blank" rel="noopener" aria-label="LinkedIn"><i data-lucide="linkedin"></i></a>
+          <a href="https://wa.me/7358173028" target="_blank" rel="noopener" aria-label="WhatsApp"><i data-lucide="message-circle"></i></a>
+        </div>
+      </div>
+      <div class="foot-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how">How It Works</a></li>
+          <li><a href="#demo">Examples</a></li>
+          <li><a href="#demo">Pricing</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Connect</h5>
+        <ul>
+          <li><a href="https://github.com/Parthi-maker?tab=repositories" target="_blank" rel="noopener"><i data-lucide="github"></i> GitHub</a></li>
+          <li><a href="https://www.linkedin.com/in/parthiban-r-/" target="_blank" rel="noopener"><i data-lucide="linkedin"></i> LinkedIn</a></li>
+          <li><a href="https://wa.me/7358173028" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 DevLens. All rights reserved.</span>
+      <span class="tagline">Designed for developers. Built for clarity.</span>
+      <span class="ver">v1.0.0</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Render Lucide icons
+lucide.createIcons();
+
+// Navbar: transparent -> dark blur on scroll
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 12);
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// Mobile menu
+const hamburger = document.getElementById('hamburger');
+const mobileMenu = document.getElementById('mobileMenu');
+hamburger.addEventListener('click', () => {
+  const open = mobileMenu.classList.toggle('open');
+  hamburger.setAttribute('aria-expanded', String(open));
+  hamburger.innerHTML = open ? '<i data-lucide="x"></i>' : '<i data-lucide="menu"></i>';
+  lucide.createIcons();
+});
+mobileMenu.querySelectorAll('a').forEach(a =>
+  a.addEventListener('click', () => {
+    mobileMenu.classList.remove('open');
+    hamburger.setAttribute('aria-expanded', 'false');
+    hamburger.innerHTML = '<i data-lucide="menu"></i>';
+    lucide.createIcons();
+  })
+);
+
+// Fade-up entrance animations via IntersectionObserver
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// === DEMO INTERACTIONS ===
+const prInput = document.getElementById('prInput');
+document.querySelectorAll('.chip').forEach(chip =>
+  chip.addEventListener('click', () => {
+    prInput.value = chip.dataset.url;
+    analysePR(chip.dataset.url);
+  })
+);
+document.getElementById('loadExample').addEventListener('click', () => {
+  const overlay = document.querySelector('.demo-overlay');
+  const mock = document.querySelector('.demo-preview .mockup');
+  overlay.style.transition = 'opacity .45s';
+  overlay.style.opacity = '0';
+  mock.style.transition = 'filter .55s';
+  mock.style.filter = 'none';
+  setTimeout(() => (overlay.style.display = 'none'), 460);
+  const exampleUrl = document.querySelector('.chip').dataset.url;
+  prInput.value = exampleUrl;
+  analysePR(exampleUrl);
+});
+document.getElementById('analyseBtn').addEventListener('click', () => analysePR(prInput.value));
+prInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') analysePR(prInput.value);
+});
+
+// Animated dot grid on hero (canvas)
+const heroEl = document.getElementById('hero');
+const heroCanvas = document.getElementById('heroCanvas');
+if (heroEl && heroCanvas) {
+  const cx = heroCanvas.getContext('2d');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const GAP = 26;
+  let w = 0, h = 0;
+  const pointer = { x: -9999, y: -9999 };
+
+  function resizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = heroEl.offsetWidth;
+    h = heroEl.offsetHeight;
+    heroCanvas.width = w * dpr;
+    heroCanvas.height = h * dpr;
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  heroEl.addEventListener('mousemove', e => {
+    const rect = heroCanvas.getBoundingClientRect();
+    pointer.x = e.clientX - rect.left;
+    pointer.y = e.clientY - rect.top;
+  });
+  heroEl.addEventListener('mouseleave', () => { pointer.x = -9999; pointer.y = -9999; });
+
+  function drawDots(t) {
+    cx.clearRect(0, 0, w, h);
+    for (let x = GAP / 2; x < w; x += GAP) {
+      for (let y = GAP / 2; y < h; y += GAP) {
+        // Slow breathing wave drifting diagonally across the grid
+        const wave = 0.5 + 0.5 * Math.sin(t * 0.0009 + x * 0.018 + y * 0.014);
+        // Pointer proximity glow (violet)
+        const dx = x - pointer.x, dy = y - pointer.y;
+        const glow = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / 150);
+        const alpha = 0.05 + wave * 0.09 + glow * 0.45;
+        cx.beginPath();
+        cx.fillStyle = glow > 0.03
+          ? 'rgba(108,99,255,' + alpha.toFixed(3) + ')'
+          : 'rgba(139,148,167,' + alpha.toFixed(3) + ')';
+        cx.arc(x, y, 1 + glow * 1.3, 0, Math.PI * 2);
+        cx.fill();
+      }
+    }
+  }
+
+  if (reducedMotion) {
+    drawDots(0);
+  } else {
+    requestAnimationFrame(function loop(now) {
+      drawDots(now);
+      requestAnimationFrame(loop);
+    });
+  }
+}
+
+// ====================================================================
+// DEVLENS APP — real PR analysis via the GitHub REST API
+// ====================================================================
+
+// === DOM HELPERS ===
+
+/**
+ * Create an element with attributes, listeners ('onclick' style keys) and
+ * children. Children are appended as nodes or text nodes only — never
+ * innerHTML — so user-controlled data cannot inject markup (XSS-safe).
+ */
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === 'class') node.className = value;
+    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat(Infinity)) {
+    if (child === null || child === undefined) continue;
+    node.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+/** Create a namespaced SVG element with attributes. */
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+  return node;
+}
+
+/** Create a Lucide icon placeholder; rendered later by lucide.createIcons(). */
+function makeIcon(name, size = 14) {
+  return el('i', { 'data-lucide': name, style: 'width:' + size + 'px;height:' + size + 'px' });
+}
+
+/** Format an ISO timestamp as a relative time string ('2 days ago'). */
+function relTime(iso) {
+  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (!Number.isFinite(seconds) || seconds < 45) return 'just now';
+  const units = [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]];
+  for (const [name, span] of units) {
+    const value = Math.floor(seconds / span);
+    if (value >= 1) return value + ' ' + name + (value > 1 ? 's' : '') + ' ago';
+  }
+  return 'just now';
+}
+
+// === TOAST ===
+
+let toastTimer = null;
+
+/** Show a transient toast message at the bottom of the viewport. */
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+// === SETTINGS / OPTIONAL TOKEN ===
+
+const TOKEN_KEY = 'devlens_github_token';
+
+/** Read the saved GitHub token (empty string when none). */
+function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+}
+
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPop = document.getElementById('settingsPop');
+const tokenInput = document.getElementById('tokenInput');
+
+/** Reflect token presence with a green dot on the gear icon. */
+function refreshTokenIndicator() {
+  settingsBtn.classList.toggle('has-token', Boolean(getToken()));
+}
+
+settingsBtn.addEventListener('click', event => {
+  event.stopPropagation();
+  settingsPop.classList.toggle('open');
+  tokenInput.value = getToken();
+});
+settingsPop.addEventListener('click', event => event.stopPropagation());
+document.addEventListener('click', () => settingsPop.classList.remove('open'));
+document.getElementById('saveTokenBtn').addEventListener('click', () => {
+  const value = tokenInput.value.trim();
+  try {
+    if (value) { localStorage.setItem(TOKEN_KEY, value); showToast('Token saved'); }
+    else { localStorage.removeItem(TOKEN_KEY); showToast('Token removed'); }
+  } catch { showToast('Could not access localStorage'); }
+  refreshTokenIndicator();
+  settingsPop.classList.remove('open');
+});
+refreshTokenIndicator();
+
+// === ERROR UI ===
+
+/** Show an inline error message under the demo input. */
+function showInputError(message) {
+  document.getElementById('demoErrorText').textContent = message;
+  document.getElementById('demoError').classList.add('show');
+}
+
+/** Hide the inline error message. */
+function hideInputError() {
+  document.getElementById('demoError').classList.remove('show');
+}
+
+// === GITHUB API ===
+
+const ERROR_MESSAGES = {
+  invalid: "That doesn't look like a GitHub PR URL. Try: https://github.com/owner/repo/pull/123",
+  notfound: "PR not found. Make sure it's a public repository.",
+  ratelimit: 'GitHub API rate limit hit (60 req/hour for anonymous). Add a token in settings to get 5,000 req/hour.',
+  network: "Can't reach GitHub. Check your connection and try again."
+};
+
+/** Error type carrying a user-facing message. */
+class GitHubError extends Error {}
+
+/**
+ * Parse any GitHub PR URL format into { owner, repo, number }, or null
+ * when the input is not a valid PR URL.
+ */
+function parsePRUrl(input) {
+  if (!input || !input.trim()) return null;
+  let raw = input.trim();
+  if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
+  try {
+    const url = new URL(raw);
+    if (!/(^|\.)github\.com$/i.test(url.hostname)) return null;
+    const match = url.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)(\/|$)/);
+    return match ? { owner: match[1], repo: match[2], number: match[3] } : null;
+  } catch { return null; }
+}
+
+/**
+ * Fetch a GitHub REST API path, attaching the optional saved token and
+ * mapping HTTP failures to friendly GitHubError messages.
+ */
+async function ghFetch(path) {
+  const headers = { Accept: 'application/vnd.github+json' };
+  const token = getToken();
+  if (token) headers.Authorization = 'Bearer ' + token;
+  let response;
+  try {
+    response = await fetch('https://api.github.com' + path, { headers });
+  } catch { throw new GitHubError(ERROR_MESSAGES.network); }
+  if (response.status === 404) throw new GitHubError(ERROR_MESSAGES.notfound);
+  if (response.status === 403 || response.status === 429) throw new GitHubError(ERROR_MESSAGES.ratelimit);
+  if (!response.ok) throw new GitHubError(ERROR_MESSAGES.network);
+  return response.json();
+}
+
+// === RISK SCORE ===
+
+/** Compute the 0-100 risk score plus a per-factor breakdown from PR data. */
+function computeRisk(pr, files, commits) {
+  const filePts = Math.min(files.length / 20, 1) * 25;
+  const addPts = Math.min((pr.additions || 0) / 500, 1) * 20;
+  const delPts = Math.min((pr.deletions || 0) / 200, 1) * 15;
+  const commitPts = Math.min(commits.length / 15, 1) * 15;
+  const hasConfig = files.some(f => /(\.(json|ya?ml)$)|((^|\/)\.env)/i.test(f.filename));
+  const hasTests = files.some(f => /(\.test\.|\.spec\.|__tests__\/|(^|\/)tests?\/)/i.test(f.filename));
+  const configPts = hasConfig ? 15 : 0;
+  const testPts = hasTests ? 0 : 10;
+  const score = Math.max(0, Math.min(100, Math.round(filePts + addPts + delPts + commitPts + configPts + testPts)));
+  return {
+    score,
+    factors: [
+      ['File spread', Math.round(filePts), 25],
+      ['Additions', Math.round(addPts), 20],
+      ['Deletions', Math.round(delPts), 15],
+      ['Commit count', Math.round(commitPts), 15],
+      ['Config files touched', configPts, 15],
+      ['No test files', testPts, 10]
+    ]
+  };
+}
+
+/** Map a score to its level label and color. */
+function riskLevel(score) {
+  if (score <= 33) return { tag: 'Low', color: '#3FB950' };
+  if (score <= 66) return { tag: 'Medium', color: '#FEBC2E' };
+  return { tag: 'High', color: '#F85149' };
+}
+
+// === LANGUAGE BREAKDOWN ===
+
+const LANG_GROUPS = [
+  { name: 'TypeScript', test: /\.tsx?$/i, color: '#6C63FF' },
+  { name: 'JavaScript', test: /\.[mc]?jsx?$/i, color: '#FFCB6B' },
+  { name: 'CSS/SCSS', test: /\.(css|scss|sass|less)$/i, color: '#00D4FF' },
+  { name: 'JSON/YAML', test: /\.(json|ya?ml)$/i, color: '#3FB950' },
+  { name: 'Markdown', test: /\.mdx?$/i, color: '#F78C6C' }
+];
+
+/** Group lines changed per file extension into language buckets (sorted desc). */
+function computeLanguages(files) {
+  const totals = new Map();
+  let total = 0;
+  for (const file of files) {
+    const changed = (file.additions || 0) + (file.deletions || 0);
+    if (!changed) continue;
+    const group = LANG_GROUPS.find(g => g.test.test(file.filename));
+    const name = group ? group.name : 'Other';
+    totals.set(name, (totals.get(name) || 0) + changed);
+    total += changed;
+  }
+  if (!total) return [];
+  return [...totals.entries()].map(([name, changed]) => ({
+    name,
+    pct: (changed / total) * 100,
+    color: (LANG_GROUPS.find(g => g.name === name) || { color: '#5A6375' }).color
+  })).sort((a, b) => b.pct - a.pct);
+}
+
+// === PATCH PARSER ===
+
+/**
+ * Parse a unified diff patch string from the GitHub API into typed lines
+ * ('add' | 'del' | 'ctx' | 'hunk') with old/new line numbers.
+ */
+function parsePatch(patch) {
+  const lines = [];
+  let oldLine = 0, newLine = 0;
+  for (const raw of patch.split('\n')) {
+    if (raw.startsWith('@@')) {
+      const match = raw.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) { oldLine = Number(match[1]); newLine = Number(match[2]); }
+      lines.push({ type: 'hunk', old: '', new: '', text: raw });
+    } else if (raw.startsWith('+')) {
+      lines.push({ type: 'add', old: '', new: newLine++, text: raw.slice(1) });
+    } else if (raw.startsWith('-')) {
+      lines.push({ type: 'del', old: oldLine++, new: '', text: raw.slice(1) });
+    } else if (raw.startsWith('\\')) {
+      lines.push({ type: 'hunk', old: '', new: '', text: raw });
+    } else {
+      lines.push({ type: 'ctx', old: oldLine++, new: newLine++, text: raw.startsWith(' ') ? raw.slice(1) : raw });
+    }
+  }
+  return lines;
+}
+
+// === RENDERERS ===
+
+const MAX_DIFF_LINES = 400;
+const DEFAULT_OPEN_FILES = 8;
+const STATUS_DOTS = { added: 'var(--green)', removed: 'var(--red)', renamed: 'var(--cyan)', copied: 'var(--cyan)' };
+
+/** Show animated skeleton placeholders while the PR is being fetched. */
+function renderSkeleton() {
+  const rows = widths => widths.map(width => el('div', { class: 'skel skel-row', style: 'width:' + width }));
+  document.getElementById('resultsContent').replaceChildren(
+    el('div', { class: 'skel-card' },
+      el('div', { class: 'skel skel-row', style: 'width:55%;height:22px' }),
+      rows(['35%', '48%'])),
+    el('div', { class: 'results-main' },
+      el('div', { class: 'skel-card' }, rows(['90%', '70%', '85%', '60%', '78%'])),
+      el('div', { style: 'display:flex;flex-direction:column;gap:14px;min-width:0' },
+        ...[0, 1, 2].map(() => el('div', { class: 'skel-card' }, rows(['40%', '100%', '82%', '64%']))))),
+    el('div', { class: 'results-bottom' },
+      ...[0, 1, 2].map(() => el('div', { class: 'skel-card' }, rows(['45%', '100%', '75%', '58%'])))));
+}
+
+/** Build the PR header card: title, status badge, author, branches, stats, share. */
+function renderPRHeader(pr, commitCount) {
+  const state = pr.merged_at ? 'merged' : pr.state;
+  return el('div', { class: 'pr-header' },
+    el('div', { style: 'display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap' },
+      el('div', { class: 'pr-title' }, pr.title, ' ', el('span', { class: 'num' }, '#' + pr.number)),
+      el('button', { class: 'btn btn-outline', type: 'button', onclick: copyShareUrl }, makeIcon('share-2', 15), 'Share')),
+    el('div', { class: 'pr-meta' },
+      el('span', { class: 'badge ' + state }, state),
+      el('span', { class: 'author' },
+        el('img', { src: pr.user.avatar_url, alt: pr.user.login, loading: 'lazy' }),
+        pr.user.login),
+      el('span', { class: 'branch-chip' }, pr.base.ref),
+      makeIcon('arrow-right', 13),
+      el('span', { class: 'branch-chip' }, pr.head.ref),
+      el('span', {}, 'opened ' + relTime(pr.created_at))),
+    el('div', { class: 'pr-statsbar' },
+      el('span', {}, pr.changed_files + ' files'),
+      el('span', { class: 'add' }, '+' + (pr.additions || 0).toLocaleString()),
+      el('span', { class: 'del' }, '-' + (pr.deletions || 0).toLocaleString()),
+      el('span', {}, commitCount + ' commits')));
+}
+
+/** Build the sidebar listing every changed file; click scrolls to its diff. */
+function renderFileTree(files) {
+  return el('aside', { class: 'file-tree' },
+    files.map((file, index) => el('button', {
+      class: 'ft-item', type: 'button', title: file.filename,
+      onclick: () => {
+        const block = document.getElementById('file-' + index);
+        if (!block) return;
+        block.classList.add('open');
+        block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+      el('span', { class: 'fdot', style: 'background:' + (STATUS_DOTS[file.status] || '#FEBC2E') }),
+      el('span', { class: 'fname' }, file.filename),
+      el('span', { class: 'fstat' }, '+' + file.additions + ' -' + file.deletions))));
+}
+
+/** Build one collapsible diff block for a changed file. */
+function renderFileBlock(file, index) {
+  const block = el('div', { class: 'dfile' + (index < DEFAULT_OPEN_FILES ? ' open' : ''), id: 'file-' + index });
+  const hasPatch = Boolean(file.patch);
+  const head = el('div', { class: 'dfile-head', onclick: () => block.classList.toggle('open') },
+    el('i', { 'data-lucide': 'chevron-right', class: 'chev' }),
+    el('span', { class: 'path' }, file.previous_filename ? file.previous_filename + ' \u2192 ' + file.filename : file.filename),
+    hasPatch ? null : el('span', { class: 'fbadge binary' }, 'no diff'),
+    el('span', { class: 'fbadge ' + file.status }, file.status),
+    el('span', { class: 'fchanges' },
+      el('span', { class: 'add' }, '+' + file.additions), ' ',
+      el('span', { class: 'del' }, '-' + file.deletions)));
+  const body = el('div', { class: 'dfile-body' });
+  if (!hasPatch) {
+    body.append(el('div', { class: 'dline-note' }, 'No diff available for this file (binary, or renamed with no content changes).'));
+  } else {
+    const lines = parsePatch(file.patch);
+    for (const line of lines.slice(0, MAX_DIFF_LINES)) {
+      const isHunk = line.type === 'hunk';
+      body.append(el('div', { class: 'dline ' + line.type },
+        el('span', { class: 'ln' }, String(line.old)),
+        el('span', { class: 'ln' }, String(line.new)),
+        el('span', { class: 'code' },
+          isHunk ? null : el('span', { class: 'sign' }, line.type === 'add' ? '+' : line.type === 'del' ? '-' : ''),
+          line.text)));
+    }
+    if (lines.length > MAX_DIFF_LINES) {
+      body.append(el('div', { class: 'dline-note' }, 'Diff truncated \u2014 showing first ' + MAX_DIFF_LINES + ' of ' + lines.length + ' lines. View the full diff on GitHub.'));
+    }
+  }
+  block.append(head, body);
+  return block;
+}
+
+const GAUGE_ARC = 131.95;
+
+/** Build the risk panel; the gauge arc animates from 0 to score over 1.2s. */
+function renderRiskPanel(pr, files, commits) {
+  const { score, factors } = computeRisk(pr, files, commits);
+  const level = riskLevel(score);
+  const arc = svgEl('path', { d: 'M8 50 A 42 42 0 0 1 92 50', fill: 'none', stroke: level.color, 'stroke-width': 9, 'stroke-linecap': 'round', 'stroke-dasharray': '0 ' + GAUGE_ARC });
+  const svg = svgEl('svg', { viewBox: '0 0 100 54', width: 120, height: 65 });
+  svg.append(
+    svgEl('path', { d: 'M8 50 A 42 42 0 0 1 92 50', fill: 'none', stroke: '#22293580', 'stroke-width': 9, 'stroke-linecap': 'round' }),
+    arc);
+  const scoreNode = el('div', { class: 'score' }, '0');
+  const panel = el('div', { class: 'rpanel' },
+    el('h4', {}, 'Risk Score'),
+    el('div', { class: 'risk-big' }, svg,
+      el('div', {}, scoreNode, el('div', { class: 'tag', style: 'color:' + level.color }, level.tag))),
+    el('ul', { class: 'risk-factors' },
+      factors.map(([name, pts, max]) => el('li', {}, el('span', {}, name), el('span', {}, pts + ' / ' + max)))));
+  const start = performance.now();
+  (function tick(now) {
+    const progress = Math.min((now - start) / 1200, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    arc.setAttribute('stroke-dasharray', (score * eased / 100 * GAUGE_ARC).toFixed(2) + ' ' + GAUGE_ARC);
+    scoreNode.textContent = String(Math.round(score * eased));
+    if (progress < 1) requestAnimationFrame(tick);
+  })(start);
+  return panel;
+}
+
+/** Build the language donut (CSS conic-gradient) and legend from real data. */
+function renderLanguagesPanel(files) {
+  const groups = computeLanguages(files);
+  const panel = el('div', { class: 'rpanel' }, el('h4', {}, 'Language Breakdown'));
+  if (!groups.length) {
+    panel.append(el('p', { style: 'font-size:13px;color:var(--muted)' }, 'No measurable line changes in this PR.'));
+    return panel;
+  }
+  let acc = 0;
+  const stops = groups.map(group => {
+    const from = acc;
+    acc += group.pct;
+    return group.color + ' ' + from.toFixed(2) + '% ' + acc.toFixed(2) + '%';
+  }).join(',');
+  panel.append(el('div', { class: 'donut-wrap', style: 'gap:18px' },
+    el('div', { class: 'donut-lg', style: 'background:conic-gradient(' + stops + ')' }),
+    el('ul', { class: 'legend', style: 'font-size:12px' },
+      groups.map(group => el('li', {},
+        el('span', { class: 'sw', style: 'background:' + group.color }),
+        group.name + ' ' + group.pct.toFixed(1) + '%')))));
+  return panel;
+}
+
+/** Build the commit timeline: message, avatar, relative time, SHA link. */
+function renderCommitsPanel(commits) {
+  const panel = el('div', { class: 'rpanel' }, el('h4', {}, 'Commit Timeline'));
+  const list = el('div', { class: 'commit-list' });
+  const buildRow = commit => {
+    const firstLine = (commit.commit.message || '').split('\n')[0];
+    const message = firstLine.length > 72 ? firstLine.slice(0, 72) + '\u2026' : firstLine;
+    const authorName = (commit.commit.author && commit.commit.author.name) || (commit.author && commit.author.login) || 'unknown';
+    const when = commit.commit.author && commit.commit.author.date ? relTime(commit.commit.author.date) : '';
+    const avatar = commit.author && commit.author.avatar_url
+      ? el('img', { src: commit.author.avatar_url, alt: authorName, loading: 'lazy' })
+      : el('span', { class: 'avfall' }, authorName.charAt(0).toUpperCase());
+    return el('div', { class: 'commit' }, avatar,
+      el('div', { style: 'min-width:0;flex:1' },
+        el('span', { class: 'msg', title: firstLine }, message),
+        el('div', { class: 'cmeta' }, authorName + ' \u00b7 ' + when + ' \u00b7 ',
+          el('a', { href: commit.html_url, target: '_blank', rel: 'noopener' }, commit.sha.slice(0, 7)))));
+  };
+  commits.slice(0, 10).forEach(commit => list.append(buildRow(commit)));
+  panel.append(list);
+  if (commits.length > 10) {
+    const more = el('button', { class: 'btn-ghost', type: 'button', style: 'margin-top:12px;width:100%' }, 'Show all ' + commits.length + ' commits');
+    more.addEventListener('click', () => {
+      list.replaceChildren();
+      commits.forEach(commit => list.append(buildRow(commit)));
+      more.remove();
+    });
+    panel.append(more);
+  }
+  return panel;
+}
+
+/** Open or collapse every diff block at once. */
+function setAllFiles(open) {
+  document.querySelectorAll('.dfile').forEach(block => block.classList.toggle('open', open));
+}
+
+/** Assemble the full results layout from fetched PR data. */
+function renderResults(pr, files, commits) {
+  const toggleBtn = el('button', { class: 'btn-ghost', type: 'button' }, 'Collapse all');
+  let allOpen = true;
+  toggleBtn.addEventListener('click', () => {
+    allOpen = !allOpen;
+    setAllFiles(allOpen);
+    toggleBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
+  });
+  const diffCol = el('div', { class: 'diff-col' },
+    el('div', { class: 'diff-toolbar' },
+      el('span', { class: 'count' }, files.length + ' files changed'),
+      toggleBtn),
+    files.map((file, index) => renderFileBlock(file, index)));
+  document.getElementById('resultsContent').replaceChildren(
+    renderPRHeader(pr, commits.length),
+    el('div', { class: 'results-main' }, renderFileTree(files), diffCol),
+    el('div', { class: 'results-bottom' },
+      renderRiskPanel(pr, files, commits),
+      renderLanguagesPanel(files),
+      renderCommitsPanel(commits)));
+  fileFocusIndex = -1;
+  lucide.createIcons();
+}
+
+// === SHARE ===
+
+/** Copy the current shareable URL to the clipboard and confirm with a toast. */
+async function copyShareUrl() {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    showToast('Copied!');
+  } catch {
+    showToast('Copy failed \u2014 copy the address bar URL instead');
+  }
+}
+
+// === ANALYSIS PIPELINE ===
+
+let analysing = false;
+
+/**
+ * Validate the URL, fetch PR + files + commits in parallel, render the
+ * results layout, and update the shareable ?pr= URL. All errors surface
+ * as friendly inline messages under the input.
+ */
+async function analysePR(rawUrl) {
+  const parsed = parsePRUrl(rawUrl);
+  if (!parsed) { showInputError(ERROR_MESSAGES.invalid); return; }
+  if (analysing) return;
+  analysing = true;
+  hideInputError();
+  const results = document.getElementById('results');
+  results.classList.add('active');
+  renderSkeleton();
+  results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    const base = '/repos/' + parsed.owner + '/' + parsed.repo + '/pulls/' + parsed.number;
+    const [pr, files, commits] = await Promise.all([
+      ghFetch(base),
+      ghFetch(base + '/files?per_page=100'),
+      ghFetch(base + '/commits?per_page=100')
+    ]);
+    renderResults(pr, files, commits);
+    const share = new URL(window.location.href);
+    share.searchParams.set('pr', 'https://github.com/' + parsed.owner + '/' + parsed.repo + '/pull/' + parsed.number);
+    history.replaceState(null, '', share);
+  } catch (error) {
+    results.classList.remove('active');
+    showInputError(error instanceof GitHubError ? error.message : ERROR_MESSAGES.network);
+    document.getElementById('demoError').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } finally {
+    analysing = false;
+  }
+}
+
+// === KEYBOARD SHORTCUTS ===
+
+let fileFocusIndex = -1;
+
+/** Highlight, open, and scroll to the diff block at fileFocusIndex. */
+function focusFileBlock(blocks) {
+  blocks.forEach(block => block.classList.remove('focused'));
+  const target = blocks[fileFocusIndex];
+  if (!target) return;
+  target.classList.add('focused', 'open');
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    prInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    prInput.focus({ preventScroll: true });
+    return;
+  }
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    if (event.key === 'Escape') document.activeElement.blur();
+    return;
+  }
+  const blocks = [...document.querySelectorAll('.dfile')];
+  if (!blocks.length) return;
+  if (event.key === 'j' || event.key === 'J') {
+    fileFocusIndex = Math.min(fileFocusIndex + 1, blocks.length - 1);
+    focusFileBlock(blocks);
+  } else if (event.key === 'k' || event.key === 'K') {
+    fileFocusIndex = Math.max(fileFocusIndex - 1, 0);
+    focusFileBlock(blocks);
+  } else if (event.key === 'Escape') {
+    setAllFiles(false);
+    blocks.forEach(block => block.classList.remove('focused'));
+    fileFocusIndex = -1;
+  }
+});
+
+// === SHAREABLE URL (?pr=) — auto-analyse on page load ===
+
+const initialPr = new URLSearchParams(window.location.search).get('pr');
+if (initialPr) {
+  prInput.value = initialPr;
+  analysePR(initialPr);
+}
+</script>
+</body>
+</html>
