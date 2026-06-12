@@ -16,11 +16,11 @@
 **DevLens transforms any GitHub Pull Request into a visual dashboard —
 diff explorer, risk score, commit timeline, and language breakdown. Instant. No login. No install.**
 
-[**→ Live Demo**](https://your-demo-link.vercel.app) · [**Report a Bug**](https://github.com/yourusername/devlens/issues) · [**Request a Feature**](https://github.com/yourusername/devlens/issues)
+[**→ Live Demo**](https://lens-three-mu.vercel.app/) ·
+[**Report a Bug**](https://github.com/ramalingamparthirohith-blip/DevLens/issues) ·
+[**Request a Feature**](https://github.com/ramalingamparthirohith-blip/DevLens/issues)
 
 <br/>
-
-![DevLens Dashboard Preview](screenshots/dashboard-preview.png)
 
 </div>
 
@@ -69,16 +69,17 @@ https://github.com/tailwindlabs/tailwindcss/pull/13500
     <td align="center"><b>PR Analysis Dashboard</b></td>
   </tr>
   <tr>
-    <td><img src="screenshots/landing.png" alt="Landing page" /></td>
-    <td><img src="screenshots/dashboard.png" alt="Dashboard" /></td>
+    <td><img width="1509" height="726" alt="image" src="https://github.com/user-attachments/assets/5d8d6e29-2604-420b-b5f7-3ddfc37b28c8" />
+</td>
+    <td>
+</td>
   </tr>
   <tr>
     <td align="center"><b>Diff Viewer</b></td>
     <td align="center"><b>Risk Score</b></td>
   </tr>
   <tr>
-    <td><img src="screenshots/diff-viewer.png" alt="Diff viewer" /></td>
-    <td><img src="screenshots/risk-score.png" alt="Risk score" /></td>
+    <td><img width="1511" height="724" alt="image" src="https://github.com/user-attachments/assets/f7f539af-8643-426b-a695-132529c8149e" />
   </tr>
 </table>
 
