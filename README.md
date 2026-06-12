@@ -70,14 +70,10 @@ https://github.com/tailwindlabs/tailwindcss/pull/13500
   </tr>
   <tr>
     <td><img width="1509" height="726" alt="image" src="https://github.com/user-attachments/assets/5d8d6e29-2604-420b-b5f7-3ddfc37b28c8" />
-</td><img width="1508" height="675" alt="image" src="https://github.com/user-attachments/assets/2ea07f6a-6bde-4823-8ff4-fdaebe362b2a" />
-
-    <td>
-</td>
+</td> <td><img width="1508" height="675" alt="image" src="https://github.com/user-attachments/assets/2ea07f6a-6bde-4823-8ff4-fdaebe362b2a" /></td>
   </tr>
   <tr>
-    <td align="center"><b>Diff Viewer</b></td>
-    <td align="center"><b>Risk Score</b></td>
+    <td align="center"><b>Diff Viewer and Risk Score </b></td>
   </tr>
   <tr>
     <td><img width="1511" height="724" alt="image" src="https://github.com/user-attachments/assets/f7f539af-8643-426b-a695-132529c8149e" />
